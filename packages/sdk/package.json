@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@universalbookmarks/sdk",
+  "version": "0.34.0",
+  "description": "Typescript SDK for UniversalBookmarks",
+  "license": "GNU Affero General Public License version 3",
+  "keywords": [
+    "universalbookmarks",
+    "universalbookmarks",
+    "sdk"
+  ],
+  "main": "./src/index.ts",
+  "type": "module",
+  "publishConfig": {
+    "main": "./dist/index.js",
+    "exports": "./dist/index.js",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts"
+  },
+  "devDependencies": {
+    "@universalbookmarks/tsconfig": "workspace:^0.1.0",
+    "@tsconfig/node22": "^22.0.0",
+    "tsx": "^4.23.13",
+    "vite": "^8.3.0",
+    "vite-tsconfig-paths": "^6.1.1"
+  },
+  "//": "`generate` runs openapi-typescript through pnpm dlx on TypeScript 6 because openapi-typescript doesn't support TypeScript 7 yet (https://github.com/openapi-ts/openapi-typescript/issues/2841). Once a release does, make it a devDependency again and run it directly.",
+  "scripts": {
+    "build": "vite build && tsc -p tsconfig.build.json && node -e \"require('node:fs').copyFileSync('src/universalbookmarks-api.d.ts', 'dist/universalbookmarks-api.d.ts')\"",
+    "generate": "pnpm dlx --package=typescript@6.0.3 --package=openapi-typescript@7.13.0 openapi-typescript ../open-api/universalbookmarks-openapi-spec.json -o src/universalbookmarks-api.d.ts && oxfmt src/universalbookmarks-api.d.ts",
+    "run": "node --import tsx src/index.ts",
+    "lint": "oxlint --ignore-path=../../.gitignore .",
+    "lint:fix": "oxlint --ignore-path=../../.gitignore . --fix",
+    "format": "oxfmt --ignore-path=../../.gitignore --ignore-path=./.gitignore --check .",
+    "format:fix": "oxfmt --ignore-path=../../.gitignore --ignore-path=./.gitignore .",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/universalbookmarks-app/universalbookmarks.git",
+    "directory": "packages/sdk"
+  },
+  "dependencies": {
+    "openapi-fetch": "^0.13.3"
+  }
+}

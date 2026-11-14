@@ -1,0 +1,89 @@
+import { z } from "zod";
+
+import {
+  zAssetSchema,
+  zAssetTypesSchema,
+} from "@universalbookmarks/shared/types/bookmarks";
+
+import { createScopedAuthedProcedure, router } from "../index";
+import { Asset } from "../models/assets";
+import { ensureBookmarkOwnership } from "./bookmarks";
+
+const assetsProcedure = createScopedAuthedProcedure("assets");
+
+export const assetsAppRouter = router({
+  list: assetsProcedure
+    .input(
+      z.object({
+        limit: z.number().min(1).max(100).default(20),
+        cursor: z.number().nullish(),
+        sortBy: z.enum(["size", "newest"]).default("size"),
+      }),
+    )
+    .output(
+      z.object({
+        assets: z.array(
+          z.object({
+            id: z.string(),
+            assetType: zAssetTypesSchema,
+            size: z.number(),
+            contentType: z.string().nullable(),
+            fileName: z.string().nullable(),
+            bookmarkId: z.string().nullable(),
+            bookmarkTitle: z.string().nullable(),
+            bookmarkUrl: z.string().nullable(),
+          }),
+        ),
+        nextCursor: z.number().nullish(),
+        totalCount: z.number(),
+        totalSize: z.number(),
+      }),
+    )
+    .query(async ({ input, ctx }) => {
+      return await Asset.list(ctx, {
+        limit: input.limit,
+        cursor: input.cursor ?? null,
+        sortBy: input.sortBy,
+      });
+    }),
+  attachAsset: assetsProcedure
+    .input(
+      z.object({
+        bookmarkId: z.string(),
+        asset: z.object({
+          id: z.string(),
+          assetType: zAssetTypesSchema,
+        }),
+      }),
+    )
+    .output(zAssetSchema)
+    .use(ensureBookmarkOwnership)
+    .mutation(async ({ input, ctx }) => {
+      return await Asset.attachAsset(ctx, input);
+    }),
+  replaceAsset: assetsProcedure
+    .input(
+      z.object({
+        bookmarkId: z.string(),
+        oldAssetId: z.string(),
+        newAssetId: z.string(),
+      }),
+    )
+    .output(z.void())
+    .use(ensureBookmarkOwnership)
+    .mutation(async ({ input, ctx }) => {
+      await Asset.replaceAsset(ctx, input);
+    }),
+  detachAsset: assetsProcedure
+    .input(
+      z.object({
+        bookmarkId: z.string(),
+        assetId: z.string(),
+      }),
+    )
+    .output(z.void())
+    .use(ensureBookmarkOwnership)
+    .mutation(async ({ input, ctx }) => {
+      await Asset.detachAsset(ctx, input);
+    }),
+});

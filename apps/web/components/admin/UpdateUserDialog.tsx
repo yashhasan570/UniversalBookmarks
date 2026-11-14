@@ -1,0 +1,217 @@
+import { useEffect } from "react";
+import { ActionButton } from "@/components/ui/action-button";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { toast } from "@/components/ui/sonner";
+import { useTranslation } from "@/lib/i18n/client";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { TRPCClientError } from "@trpc/client";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+
+import { useTRPC } from "@universalbookmarks/shared-react/trpc";
+import { updateUserSchema } from "@universalbookmarks/shared/types/admin";
+
+type UpdateUserSchema = z.infer<typeof updateUserSchema>;
+
+interface UpdateUserDialogProps {
+  userId: string;
+  currentRole: "user" | "admin";
+  currentQuota: number | null;
+  currentStorageQuota: number | null;
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  onCloseAutoFocus?: (e: Event) => void;
+}
+export default function UpdateUserDialog({
+  userId,
+  currentRole,
+  currentQuota,
+  currentStorageQuota,
+  open: isOpen,
+  setOpen: onOpenChange,
+  onCloseAutoFocus,
+}: UpdateUserDialogProps) {
+  const { t } = useTranslation();
+  const api = useTRPC();
+  const queryClient = useQueryClient();
+  const defaultValues = {
+    userId,
+    role: currentRole,
+    bookmarkQuota: currentQuota,
+    storageQuota: currentStorageQuota,
+  };
+  const form = useForm<UpdateUserSchema>({
+    resolver: zodResolver(updateUserSchema),
+    defaultValues,
+  });
+  const { mutate, isPending } = useMutation(
+    api.admin.updateUser.mutationOptions({
+      onSuccess: () => {
+        toast({
+          description: "User updated successfully",
+        });
+        queryClient.invalidateQueries(api.users.list.pathFilter());
+        onOpenChange(false);
+      },
+      onError: (error) => {
+        if (error instanceof TRPCClientError) {
+          toast({
+            variant: "destructive",
+            description: error.message,
+          });
+        } else {
+          toast({
+            variant: "destructive",
+            description: "Failed to update user",
+          });
+        }
+      },
+    }),
+  );
+
+  useEffect(() => {
+    if (isOpen) {
+      form.reset(defaultValues);
+    }
+  }, [isOpen, form]);
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent onCloseAutoFocus={onCloseAutoFocus}>
+        <DialogHeader>
+          <DialogTitle>{t("admin.users_list.edit_user")}</DialogTitle>
+        </DialogHeader>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit((val) => mutate(val))}>
+            <div className="flex w-full flex-col space-y-4">
+              <FormField
+                control={form.control}
+                name="role"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Role</FormLabel>
+                    <FormControl>
+                      <Select
+                        onValueChange={field.onChange}
+                        defaultValue={field.value}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="user">User</SelectItem>
+                          <SelectItem value="admin">Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="bookmarkQuota"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      {t("admin.users_list.bookmark_quota")}
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min="0"
+                        placeholder="Unlimited (leave empty)"
+                        {...field}
+                        value={field.value ?? ""}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          field.onChange(value === "" ? null : parseInt(value));
+                        }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="storageQuota"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      {t("admin.users_list.storage_quota_bytes")}
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min="0"
+                        placeholder="Unlimited (leave empty)"
+                        {...field}
+                        value={field.value ?? ""}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          field.onChange(value === "" ? null : parseInt(value));
+                        }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="userId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <input type="hidden" {...field} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <DialogFooter className="sm:justify-end">
+                <DialogClose asChild>
+                  <Button type="button" variant="secondary">
+                    Close
+                  </Button>
+                </DialogClose>
+                <ActionButton
+                  type="submit"
+                  loading={isPending}
+                  disabled={isPending}
+                >
+                  Update
+                </ActionButton>
+              </DialogFooter>
+            </div>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}

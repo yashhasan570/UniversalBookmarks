@@ -1,0 +1,230 @@
+import type { ToolbarActionId } from "@/lib/settings";
+import { useCallback } from "react";
+import { Pressable, View } from "react-native";
+import DraggableFlatList, {
+  ScaleDecorator,
+} from "react-native-draggable-flatlist";
+import { TOOLBAR_ACTION_REGISTRY } from "@/components/bookmarks/BottomActions";
+import {
+  SettingsActionRow,
+  SettingsGroup,
+  SettingsScreen,
+  SettingsSeparator,
+} from "@/components/settings/settings-list";
+import { TailwindResolver } from "@/components/TailwindResolver";
+import { Text } from "@/components/ui/Text";
+import { useTranslation } from "@/lib/i18n/hooks";
+import { useToolbarActionLabels } from "@/components/bookmarks/BottomActions";
+import useAppSettings, {
+  DEFAULT_OVERFLOW_ACTIONS,
+  DEFAULT_TOOLBAR_ACTIONS,
+} from "@/lib/settings";
+import { AppIcon } from "@/components/ui/AppIcon";
+import { GripVertical, Minus, Plus } from "lucide-react-native";
+
+const MAX_VISIBLE = 6;
+
+export default function ToolbarSettingsPage() {
+  const { settings, setSettings } = useAppSettings();
+  const { t } = useTranslation();
+  const actionLabels = useToolbarActionLabels();
+
+  const visible = settings.toolbarActions;
+  const overflow = settings.overflowActions ?? [];
+
+  const save = useCallback(
+    (nextVisible: ToolbarActionId[], nextOverflow: ToolbarActionId[]) => {
+      setSettings({
+        ...settings,
+        toolbarActions: nextVisible,
+        overflowActions: nextOverflow,
+      });
+    },
+    [settings, setSettings],
+  );
+
+  const demoteToOverflow = useCallback(
+    (id: ToolbarActionId) => {
+      save(
+        visible.filter((a) => a !== id),
+        [...overflow, id],
+      );
+    },
+    [visible, overflow, save],
+  );
+
+  const promoteToVisible = useCallback(
+    (id: ToolbarActionId) => {
+      if (visible.length >= MAX_VISIBLE) return;
+      save(
+        [...visible, id],
+        overflow.filter((a) => a !== id),
+      );
+    },
+    [visible, overflow, save],
+  );
+
+  const resetToDefaults = () => {
+    save([...DEFAULT_TOOLBAR_ACTIONS], [...DEFAULT_OVERFLOW_ACTIONS]);
+  };
+
+  const renderVisibleItem = useCallback(
+    ({
+      item,
+      drag,
+      isActive,
+    }: {
+      item: ToolbarActionId;
+      drag: () => void;
+      isActive: boolean;
+    }) => {
+      const meta = TOOLBAR_ACTION_REGISTRY[item];
+      return (
+        <ScaleDecorator>
+          <Pressable
+            onLongPress={drag}
+            disabled={isActive}
+            className="flex-row items-center gap-3 bg-card px-4 py-3 active:opacity-70"
+          >
+            <TailwindResolver
+              className="text-muted-foreground"
+              comp={(styles) => (
+                <GripVertical size={18} color={styles?.color?.toString()} />
+              )}
+            />
+            <TailwindResolver
+              className="text-foreground"
+              comp={(styles) => (
+                <AppIcon
+                  icon={meta.Icon}
+                  size={20}
+                  color={styles?.color?.toString() ?? "#000"}
+                />
+              )}
+            />
+            <Text className="flex-1">{actionLabels[item]}</Text>
+            <Pressable onPress={() => demoteToOverflow(item)} className="p-1.5">
+              <TailwindResolver
+                className="text-muted-foreground"
+                comp={(styles) => (
+                  <Minus size={18} color={styles?.color?.toString()} />
+                )}
+              />
+            </Pressable>
+          </Pressable>
+        </ScaleDecorator>
+      );
+    },
+    [actionLabels, demoteToOverflow],
+  );
+
+  const renderOverflowItem = useCallback(
+    ({
+      item,
+      drag,
+      isActive,
+    }: {
+      item: ToolbarActionId;
+      drag: () => void;
+      isActive: boolean;
+    }) => {
+      const meta = TOOLBAR_ACTION_REGISTRY[item];
+      const canPromote = visible.length < MAX_VISIBLE;
+      return (
+        <ScaleDecorator>
+          <Pressable
+            onLongPress={drag}
+            disabled={isActive}
+            className="flex-row items-center gap-3 bg-card px-4 py-3 active:opacity-70"
+          >
+            <TailwindResolver
+              className="text-muted-foreground"
+              comp={(styles) => (
+                <GripVertical size={18} color={styles?.color?.toString()} />
+              )}
+            />
+            <TailwindResolver
+              className="text-muted-foreground"
+              comp={(styles) => (
+                <AppIcon
+                  icon={meta.Icon}
+                  size={20}
+                  color={styles?.color?.toString() ?? "#000"}
+                />
+              )}
+            />
+            <Text className="flex-1">{actionLabels[item]}</Text>
+            <Pressable
+              onPress={() => promoteToVisible(item)}
+              disabled={!canPromote}
+              className="p-1.5"
+            >
+              <TailwindResolver
+                className={
+                  canPromote ? "text-primary" : "text-muted-foreground/30"
+                }
+                comp={(styles) => (
+                  <Plus size={18} color={styles?.color?.toString()} />
+                )}
+              />
+            </Pressable>
+          </Pressable>
+        </ScaleDecorator>
+      );
+    },
+    [actionLabels, visible.length, promoteToVisible],
+  );
+
+  return (
+    <SettingsScreen>
+      <SettingsGroup
+        header={t("settings.toolbar_visible", { max: MAX_VISIBLE })}
+      >
+        {visible.length === 0 ? (
+          <View className="px-4 py-3">
+            <Text className="text-sm text-muted-foreground">
+              {t("settings.toolbar_visible_empty")}
+            </Text>
+          </View>
+        ) : (
+          <DraggableFlatList
+            data={visible}
+            renderItem={renderVisibleItem}
+            keyExtractor={(item) => item}
+            onDragEnd={({ data }) => save(data, overflow)}
+            scrollEnabled={false}
+            ItemSeparatorComponent={SettingsSeparator}
+          />
+        )}
+      </SettingsGroup>
+
+      <SettingsGroup header={t("settings.toolbar_overflow")}>
+        {overflow.length === 0 ? (
+          <View className="px-4 py-3">
+            <Text className="text-sm text-muted-foreground">
+              {t("settings.toolbar_overflow_empty")}
+            </Text>
+          </View>
+        ) : (
+          <DraggableFlatList
+            data={overflow}
+            renderItem={renderOverflowItem}
+            keyExtractor={(item) => item}
+            onDragEnd={({ data }) => save(visible, data)}
+            scrollEnabled={false}
+            ItemSeparatorComponent={SettingsSeparator}
+          />
+        )}
+      </SettingsGroup>
+
+      <SettingsGroup>
+        <SettingsActionRow
+          centered
+          label={t("settings.toolbar_reset")}
+          onPress={resetToDefaults}
+          tone="primary"
+        />
+      </SettingsGroup>
+    </SettingsScreen>
+  );
+}

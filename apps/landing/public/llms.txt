@@ -1,0 +1,85 @@
+# Universal Bookmarks
+
+> Universal Bookmarks is an open source, self-hostable bookmark manager for saving links, notes, images, and PDFs. It supports archival, full-text and semantic search, rules, and optional AI tagging and summaries.
+
+For AI agents and automation, use the tools below.
+
+## Command line tool
+
+Use the Universal Bookmarks CLI to manage bookmarks, lists, tags, and imports from the terminal.
+
+- [CLI documentation](https://docs.universalbookmarks.com/integrations/command-line)
+- [npm package](https://www.npmjs.com/package/@universalbookmarks/cli)
+- [Source code](https://github.com/universalbookmarks-app/universalbookmarks/tree/main/apps/cli)
+
+## MCP server
+
+Connect Universal Bookmarks to Claude Desktop and other MCP clients.
+
+- [MCP documentation](https://docs.universalbookmarks.com/integrations/mcp)
+- [npm package](https://www.npmjs.com/package/@universalbookmarks/mcp)
+- [Source code](https://github.com/universalbookmarks-app/universalbookmarks/tree/main/apps/mcp)
+
+## Skills
+
+Teach compatible agents how to search, save, and organize content in Universal Bookmarks.
+
+- [Agent skills documentation](https://docs.universalbookmarks.com/integrations/agentic-skills)
+- [Universal Bookmarks skill](https://raw.githubusercontent.com/universalbookmarks-app/universalbookmarks/refs/heads/main/skills/SKILL.md)
+- [skills.sh](https://skills.sh/universalbookmarks-app/universalbookmarks/universalbookmarks)
+- [ClawHub](https://clawhub.ai/universalbookmarks/universalbookmarks-app)
+
+## Documentation
+
+Guides for installing, configuring, using, and administering Universal Bookmarks.
+
+- [Documentation](https://docs.universalbookmarks.com)
+- [Installation](https://docs.universalbookmarks.com/installation/docker)
+- [Configuration](https://docs.universalbookmarks.com/configuration/environment-variables)
+- [Advanced workflows](https://docs.universalbookmarks.com/using-universalbookmarks/advanced-workflows)
+- [Search query language](https://docs.universalbookmarks.com/using-universalbookmarks/search-query-language)
+- [Security considerations](https://docs.universalbookmarks.com/administration/security-considerations)
+
+## REST API
+
+Use the authenticated HTTP API to manage bookmarks, lists, tags, highlights, assets, and backups.
+
+- [API documentation](https://docs.universalbookmarks.com/api/universalbookmarks-api)
+- [OpenAPI spec (JSON)](https://raw.githubusercontent.com/universalbookmarks-app/universalbookmarks/refs/heads/main/packages/open-api/universalbookmarks-openapi-spec.json)
+
+## TypeScript SDK
+
+The official TypeScript client for the Universal Bookmarks API.
+
+- [npm package](https://www.npmjs.com/package/@universalbookmarks/sdk)
+- [Repository](https://github.com/universalbookmarks-app/universalbookmarks/tree/main/packages/sdk)
+
+## Self-hosting
+
+Run Universal Bookmarks on your own infrastructure using Docker, Kubernetes, or a supported community package.
+
+- [Docker installation](https://docs.universalbookmarks.com/installation/docker)
+- [Kubernetes installation](https://docs.universalbookmarks.com/installation/kubernetes)
+- [Environment variables](https://docs.universalbookmarks.com/configuration/environment-variables)
+- [Releases](https://github.com/universalbookmarks-app/universalbookmarks/releases)
+
+## Cloud and pricing
+
+Use the managed Universal Bookmarks service without running your own server.
+
+- [Universal Bookmarks Cloud](https://cloud.universalbookmarks.com)
+- [Pricing (Markdown)](https://universalbookmarks.com/pricing.md)
+- [Pricing (HTML)](https://universalbookmarks.com/pricing)
+
+## Apps and extensions
+
+Save and read content through the mobile apps, browser extensions, and community integrations.
+
+- [Apps and extensions](https://universalbookmarks.com/apps)
+
+## Project
+
+- [Homepage](https://universalbookmarks.com)
+- [GitHub repository](https://github.com/universalbookmarks-app/universalbookmarks)
+- [Discord community](https://discord.gg/NrgeYywsFh)
+- [License](https://github.com/universalbookmarks-app/universalbookmarks/blob/main/LICENSE)

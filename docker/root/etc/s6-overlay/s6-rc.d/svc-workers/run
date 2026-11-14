@@ -1,0 +1,5 @@
+#!/command/with-contenv sh
+# shellcheck shell=bash
+
+cd /app/apps/workers;
+exec /etc/s6-overlay/scripts/drop-privileges node dist/index.js

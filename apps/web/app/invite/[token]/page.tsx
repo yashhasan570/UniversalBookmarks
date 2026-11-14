@@ -1,0 +1,26 @@
+import { redirect } from "next/navigation";
+import InviteAcceptForm from "@/components/invite/InviteAcceptForm";
+import UniversalBookmarksLogo from "@/components/UniversalBookmarksIcon";
+import { getServerAuthSession } from "@/server/auth";
+
+export default async function InvitePage({
+  params,
+}: PageProps<"/invite/[token]">) {
+  const session = await getServerAuthSession();
+  if (session) {
+    redirect("/");
+  }
+
+  const { token } = await params;
+
+  return (
+    <div className="flex min-h-screen justify-center bg-background px-4 py-12 sm:px-6 sm:pt-[12vh] lg:px-8">
+      <div className="w-full max-w-md space-y-8">
+        <div className="flex items-center justify-center">
+          <UniversalBookmarksLogo height={80} />
+        </div>
+        <InviteAcceptForm token={token} />
+      </div>
+    </div>
+  );
+}

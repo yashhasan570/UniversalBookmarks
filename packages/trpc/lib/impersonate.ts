@@ -1,0 +1,32 @@
+import { eq } from "drizzle-orm";
+
+import { db as globalDb } from "@universalbookmarks/db";
+import { users } from "@universalbookmarks/db/schema";
+
+import { AuthedContext } from "..";
+
+export async function buildImpersonatingAuthedContext(
+  userId: string,
+  db: AuthedContext["db"] = globalDb,
+): Promise<AuthedContext> {
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+  });
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  return {
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    },
+    auth: { type: "internal" },
+    db,
+    req: {
+      ip: null,
+    },
+  };
+}

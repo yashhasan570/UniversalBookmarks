@@ -1,0 +1,141 @@
+"use client";
+
+import { useState } from "react";
+import { ActionButton } from "@/components/ui/action-button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { toast } from "@/components/ui/sonner";
+import { useTranslation } from "@/lib/i18n/client";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { TRPCClientError } from "@trpc/client";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+
+import { useTRPC } from "@universalbookmarks/shared-react/trpc";
+
+const createInviteSchema = z.object({
+  email: z.string().email("Please enter a valid email address"),
+});
+
+interface CreateInviteDialogProps {
+  children: React.ReactNode;
+}
+
+export default function CreateInviteDialog({
+  children,
+}: CreateInviteDialogProps) {
+  const { t } = useTranslation();
+  const api = useTRPC();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const form = useForm<z.infer<typeof createInviteSchema>>({
+    resolver: zodResolver(createInviteSchema),
+    defaultValues: {
+      email: "",
+    },
+  });
+
+  const createInviteMutation = useMutation(
+    api.invites.create.mutationOptions({
+      onSuccess: () => {
+        toast({
+          description: "Invite sent successfully",
+        });
+        queryClient.invalidateQueries(api.invites.list.pathFilter());
+        setOpen(false);
+        form.reset();
+        setErrorMessage("");
+      },
+      onError: (e) => {
+        if (e instanceof TRPCClientError) {
+          setErrorMessage(e.message);
+        } else {
+          setErrorMessage("Failed to send invite");
+        }
+      },
+    }),
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("admin.invites.send_user_invitation")}</DialogTitle>
+          <DialogDescription>
+            Send an invitation to a new user to join UniversalBookmarks. They&apos;ll
+            receive an email with instructions to create their account and will
+            be assigned the &quot;user&quot; role.
+          </DialogDescription>
+        </DialogHeader>
+
+        <Form {...form}>
+          <form
+            onSubmit={form.handleSubmit(async (value) => {
+              setErrorMessage("");
+              await createInviteMutation.mutateAsync(value);
+            })}
+            className="space-y-4"
+          >
+            {errorMessage && (
+              <p className="text-sm text-destructive">{errorMessage}</p>
+            )}
+
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t("admin.invites.email_address")}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="email"
+                      placeholder="user@example.com"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="flex justify-end space-x-2">
+              <ActionButton
+                type="button"
+                variant="outline"
+                loading={false}
+                onClick={() => setOpen(false)}
+              >
+                Cancel
+              </ActionButton>
+              <ActionButton
+                type="submit"
+                loading={createInviteMutation.isPending}
+              >
+                {t("admin.invites.send_invitation")}
+              </ActionButton>
+            </div>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}

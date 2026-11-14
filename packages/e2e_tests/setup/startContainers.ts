@@ -1,0 +1,138 @@
+import { execSync } from "child_process";
+import net from "net";
+import path from "path";
+import { fileURLToPath } from "url";
+import type { TestProject } from "vitest/node";
+
+import { waitUntil } from "../utils/general";
+
+async function getRandomPort(): Promise<number> {
+  const server = net.createServer();
+  return new Promise<number>((resolve, reject) => {
+    server.unref();
+    server.on("error", reject);
+    server.listen(0, () => {
+      const port = (server.address() as net.AddressInfo).port;
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+async function waitForHealthy(port: number, timeout = 60000): Promise<void> {
+  return waitUntil(
+    async () => {
+      const response = await fetch(`http://localhost:${port}/api/health`);
+      return response.status === 200;
+    },
+    "Container are healthy",
+    timeout,
+  );
+}
+
+async function waitForAimockHealthy(
+  port: number,
+  timeout = 60000,
+): Promise<void> {
+  return waitUntil(
+    async () => {
+      const response = await fetch(`http://localhost:${port}/health`);
+      return response.status === 200;
+    },
+    "Aimock is healthy",
+    timeout,
+  );
+}
+
+export default async function ({ provide }: TestProject) {
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const universalbookmarksPort = await getRandomPort();
+  const universalbookmarksRemotePort = await getRandomPort();
+  const aimockPort = await getRandomPort();
+  const meiliPort = await getRandomPort();
+
+  const buildArg = process.env.E2E_TEST_NO_BUILD ? "" : "--build";
+
+  console.log(
+    `Starting docker compose on ports universalbookmarks=${universalbookmarksPort} universalbookmarks-remote=${universalbookmarksRemotePort} aimock=${aimockPort} meili=${meiliPort}...`,
+  );
+  execSync(`docker compose up ${buildArg} -d --wait --wait-timeout 60`, {
+    cwd: __dirname,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      UNIVERSALBOOKMARKS_PORT: universalbookmarksPort.toString(),
+      UNIVERSALBOOKMARKS_REMOTE_PORT: universalbookmarksRemotePort.toString(),
+      AIMOCK_PORT: aimockPort.toString(),
+      MEILI_PORT: meiliPort.toString(),
+    },
+  });
+
+  console.log("Waiting for services to become healthy...");
+  await Promise.all([
+    waitForHealthy(universalbookmarksPort),
+    waitForHealthy(universalbookmarksRemotePort),
+    waitForAimockHealthy(aimockPort),
+  ]);
+
+  // Wait 5 seconds for the worker to start
+  await new Promise((resolve) => setTimeout(resolve, 5000));
+
+  provide("universalbookmarksPort", universalbookmarksPort);
+  provide("universalbookmarksRemotePort", universalbookmarksRemotePort);
+  provide("aimockPort", aimockPort);
+  provide("meiliPort", meiliPort);
+
+  process.env.UNIVERSALBOOKMARKS_PORT = universalbookmarksPort.toString();
+  process.env.AIMOCK_PORT = aimockPort.toString();
+  process.env.MEILI_PORT = meiliPort.toString();
+
+  return async () => {
+    console.log("Capturing docker logs...");
+    try {
+      const logsDir = path.join(__dirname, "docker-logs");
+      execSync(`mkdir -p "${logsDir}"`, { cwd: __dirname });
+
+      const services = [
+        "web",
+        "web-remote",
+        "crawler",
+        "meilisearch",
+        "chrome",
+        "nginx",
+        "garage",
+        "aimock",
+      ];
+      for (const service of services) {
+        try {
+          execSync(
+            `/bin/sh -c 'docker compose logs ${service} > "${logsDir}/${service}.log" 2>&1'`,
+            {
+              cwd: __dirname,
+            },
+          );
+          console.log(`Captured logs for ${service}`);
+        } catch (error) {
+          console.error(`Failed to capture logs for ${service}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to capture docker logs:", error);
+    }
+
+    console.log("Stopping docker compose...");
+    execSync("docker compose down", {
+      cwd: __dirname,
+      stdio: "inherit",
+    });
+    return Promise.resolve();
+  };
+}
+
+declare module "vitest" {
+  export interface ProvidedContext {
+    universalbookmarksPort: number;
+    universalbookmarksRemotePort: number;
+    aimockPort: number;
+    meiliPort: number;
+  }
+}

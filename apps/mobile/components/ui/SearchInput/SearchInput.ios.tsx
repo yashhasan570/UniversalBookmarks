@@ -1,0 +1,177 @@
+import * as React from "react";
+import {
+  LayoutChangeEvent,
+  Pressable,
+  TextInput,
+  View,
+  ViewStyle,
+} from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
+import { TailwindResolver } from "@/components/TailwindResolver";
+import { Text } from "@/components/ui/Text";
+import { useSharedTranslation, useTranslation } from "@/lib/i18n/hooks";
+import { cn } from "@/lib/utils";
+import { useAugmentedRef, useControllableState } from "@rn-primitives/hooks";
+import { SearchIcon } from "lucide-react-native";
+
+import type { SearchInputProps } from "./types";
+
+// Add as class when possible: https://github.com/marklawlor/nativewind/issues/522
+const BORDER_CURVE: ViewStyle = {
+  borderCurve: "continuous",
+};
+
+const SearchInput = React.forwardRef<
+  React.ElementRef<typeof TextInput>,
+  SearchInputProps
+>(
+  (
+    {
+      value: valueProp,
+      onChangeText: onChangeTextProp,
+      onFocus: onFocusProp,
+      placeholder: placeholderProp,
+      cancelText: cancelTextProp,
+      containerClassName,
+      iconContainerClassName,
+      className,
+      iconColor: _iconColor,
+      onCancel,
+      ...props
+    },
+    ref,
+  ) => {
+    const inputRef = useAugmentedRef({ ref, methods: { focus, blur, clear } });
+    const { t } = useTranslation();
+    const { t: tShared } = useSharedTranslation();
+    // Default labels are translated; explicit props still win.
+    const placeholder = placeholderProp ?? t("search.placeholder_keyword");
+    const cancelText = cancelTextProp ?? tShared("actions.cancel");
+    const [showCancel, setShowCancel] = React.useState(false);
+    const cancelButtonWidth = useSharedValue(cancelText.length * 11.2);
+    const cancelButtonVisibility = useSharedValue(0);
+
+    React.useEffect(() => {
+      cancelButtonVisibility.set(withTiming(showCancel ? 1 : 0));
+    }, [cancelButtonVisibility, showCancel]);
+
+    React.useEffect(() => {
+      cancelButtonWidth.set(cancelText.length * 11.2);
+    }, [cancelButtonWidth, cancelText]);
+
+    const [value = "", onChangeText] = useControllableState({
+      prop: valueProp,
+      defaultProp: valueProp ?? "",
+      onChange: onChangeTextProp,
+    });
+
+    const rootStyle = useAnimatedStyle(() => {
+      return {
+        paddingRight: cancelButtonVisibility.get() * cancelButtonWidth.get(),
+      };
+    });
+
+    const buttonStyle = useAnimatedStyle(() => {
+      const visibility = cancelButtonVisibility.get();
+      return {
+        position: "absolute",
+        right: 0,
+        opacity: visibility,
+        transform: [
+          {
+            translateX: (1 - visibility) * cancelButtonWidth.get(),
+          },
+        ],
+      };
+    });
+
+    function onCancelButtonLayout(event: LayoutChangeEvent) {
+      cancelButtonWidth.set(event.nativeEvent.layout.width);
+    }
+
+    function focus() {
+      inputRef.current?.focus();
+    }
+
+    function blur() {
+      inputRef.current?.blur();
+    }
+
+    function clear() {
+      onChangeText("");
+    }
+
+    function onFocus(e: Parameters<NonNullable<typeof onFocusProp>>[0]) {
+      setShowCancel(true);
+      onFocusProp?.(e);
+    }
+
+    return (
+      <Animated.View className="flex-row items-center" style={rootStyle}>
+        <Animated.View
+          style={BORDER_CURVE}
+          className={cn(
+            "flex-1 flex-row rounded-full bg-muted/20",
+            containerClassName,
+          )}
+        >
+          <View
+            className={cn(
+              "absolute bottom-0 left-0 top-0 z-50 justify-center pl-3",
+              iconContainerClassName,
+            )}
+          >
+            <TailwindResolver
+              className="text-muted-foreground"
+              comp={(styles) => (
+                <SearchIcon color={styles?.color?.toString()} size={18} />
+              )}
+            />
+          </View>
+          <TextInput
+            ref={inputRef}
+            placeholder={placeholder}
+            className={cn(
+              !showCancel && "active:bg-muted/5 dark:active:bg-muted/20",
+              "flex-1 rounded-full py-2 pl-9 pr-1 text-[17px] text-foreground placeholder:text-muted-foreground",
+              className,
+            )}
+            value={value}
+            onChangeText={onChangeText}
+            onFocus={onFocus}
+            clearButtonMode="while-editing"
+            role="searchbox"
+            {...props}
+          />
+        </Animated.View>
+        <Animated.View
+          onLayout={onCancelButtonLayout}
+          style={buttonStyle}
+          pointerEvents={!showCancel ? "none" : "auto"}
+        >
+          <Pressable
+            onPress={() => {
+              onChangeText("");
+              inputRef.current?.blur();
+              setShowCancel(false);
+              onCancel?.();
+            }}
+            disabled={!showCancel}
+            pointerEvents={!showCancel ? "none" : "auto"}
+            className="flex-1 justify-center active:opacity-50"
+          >
+            <Text className="px-2 text-primary">{cancelText}</Text>
+          </Pressable>
+        </Animated.View>
+      </Animated.View>
+    );
+  },
+);
+
+SearchInput.displayName = "SearchInput";
+
+export { SearchInput };

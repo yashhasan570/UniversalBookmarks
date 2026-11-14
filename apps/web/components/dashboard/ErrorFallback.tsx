@@ -1,0 +1,60 @@
+"use client";
+
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { useClientConfig } from "@/lib/clientConfig";
+import { useTranslation } from "@/lib/i18n/client";
+import { useProblemReportStore } from "@/lib/store/useProblemReportStore";
+import { AlertTriangle, Bug, Home, RefreshCw } from "lucide-react";
+
+export default function ErrorFallback() {
+  const { t } = useTranslation();
+  const clientConfig = useClientConfig();
+  const setReportProblemOpen = useProblemReportStore((s) => s.setOpen);
+  return (
+    <div className="flex flex-1 items-center justify-center rounded-lg bg-slate-50 p-8 shadow-sm dark:border dark:bg-card dark:shadow-none">
+      <div className="w-full max-w-md space-y-8 text-center">
+        <div className="flex justify-center">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-muted">
+            <AlertTriangle className="h-10 w-10 text-muted-foreground" />
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <h1 className="text-balance text-2xl font-semibold text-foreground">
+            Oops! Something went wrong
+          </h1>
+          <p className="text-pretty leading-relaxed text-muted-foreground">
+            We&apos;re sorry, but an unexpected error occurred. Please try again
+            or contact support if the issue persists.
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          <Button className="w-full" onClick={() => window.location.reload()}>
+            <RefreshCw className="h-4 w-4" />
+            {t("errors.try_again")}
+          </Button>
+
+          <Link href="/" className="block">
+            <Button variant="outline" className="w-full">
+              <Home className="h-4 w-4" />
+              {t("errors.go_home")}
+            </Button>
+          </Link>
+
+          {clientConfig.problemReports.enabled && (
+            <Button
+              variant="ghost"
+              className="w-full"
+              onClick={() => setReportProblemOpen(true)}
+            >
+              <Bug className="h-4 w-4" />
+              {t("problem_report.error_page_cta")}
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

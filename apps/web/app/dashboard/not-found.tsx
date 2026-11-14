@@ -1,0 +1,48 @@
+"use client";
+
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { useTranslation } from "@/lib/i18n/client";
+import { ArrowLeft, FileQuestion, Home } from "lucide-react";
+
+export default function NotFound() {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-1 items-center justify-center rounded-lg bg-muted/50 p-8 shadow-sm dark:border dark:bg-card dark:shadow-none">
+      <div className="w-full max-w-md space-y-8 text-center">
+        {/* Not Found Icon */}
+        <div className="flex justify-center">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-muted">
+            <FileQuestion className="h-10 w-10 text-muted-foreground" />
+          </div>
+        </div>
+
+        {/* Main Content */}
+        <div className="space-y-4">
+          <h1 className="text-balance text-2xl font-semibold text-foreground">
+            {t("errors.page_not_found")}
+          </h1>
+          <p className="text-pretty leading-relaxed text-muted-foreground">
+            We couldn&apos;t find the page you&apos;re looking for. It may have
+            been moved or doesn&apos;t exist.
+          </p>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="space-y-3">
+          <Button className="w-full" onClick={() => window.history.back()}>
+            <ArrowLeft className="h-4 w-4" />
+            {t("errors.go_back")}
+          </Button>
+
+          <Button variant="outline" className="w-full" asChild>
+            <Link href="/">
+              <Home className="h-4 w-4" />
+              {t("errors.go_home")}
+            </Link>
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}

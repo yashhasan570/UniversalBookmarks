@@ -1,0 +1,163 @@
+# The web, web-remote and crawler services run the same aio image. BuildKit
+# reuses the layers, so building it for each of them is cheap.
+x-universalbookmarks: &universalbookmarks
+  build:
+    dockerfile: docker/Dockerfile
+    context: ../../
+    target: aio
+    # Reuse the layers (deps install, monolith, ...) that the docker workflow
+    # pushes from main. The checked-out source is still what gets built; only
+    # unchanged layers are reused. The cache is public so that it's readable
+    # without credentials (e.g. from fork PRs). If it's unavailable, buildkit
+    # just warns and builds from scratch.
+    cache_from:
+      - type=registry,ref=ghcr.io/yashhasan570/universalbookmarks-build-cache:aio-amd64
+  restart: unless-stopped
+
+services:
+  web:
+    <<: *universalbookmarks
+    networks: [default, sites]
+    ports:
+      - "${UNIVERSALBOOKMARKS_PORT:-3000}:3000"
+    environment:
+      DATA_DIR: /tmp
+      DB_WAL_MODE: "true"
+      NEXTAUTH_SECRET: secret
+      NEXTAUTH_URL: http://localhost:${UNIVERSALBOOKMARKS_PORT:-3000}
+      MEILI_MASTER_KEY: dummy
+      MEILI_ADDR: http://meilisearch:7700
+      BROWSER_WEB_URL: http://chrome:9222
+      CRAWLER_NUM_WORKERS: 6
+      CRAWLER_ALLOWED_INTERNAL_HOSTNAMES: nginx
+      CRAWLER_STORE_PDF: "true"
+      CRAWLER_VIDEO_DOWNLOAD: "true"
+      CRAWLER_VIDEO_DOWNLOAD_MAX_SIZE: -1
+      OPENAI_API_KEY: aimock-test-key
+      OPENAI_BASE_URL: http://aimock:4010/v1
+      EMBEDDING_DIMENSIONS: 384
+      EMBEDDING_ENABLE_AUTO_INDEXING: "true"
+      INFERENCE_ENABLE_AUTO_SUMMARIZATION: "true"
+  # A second instance whose crawler worker sends all its crawls to the remote
+  # crawler below. It's only on the default network, so it can't reach the test
+  # site or chrome itself: anything it fetched locally would fail.
+  web-remote:
+    <<: *universalbookmarks
+    ports:
+      - "${UNIVERSALBOOKMARKS_REMOTE_PORT:-3001}:3000"
+    environment:
+      DATA_DIR: /tmp
+      DB_WAL_MODE: "true"
+      NEXTAUTH_SECRET: secret
+      NEXTAUTH_URL: http://localhost:${UNIVERSALBOOKMARKS_REMOTE_PORT:-3001}
+      CRAWLER_NUM_WORKERS: 6
+      CRAWLER_REMOTE_URL: http://crawler:4000
+      CRAWLER_REMOTE_TOKEN: e2e-remote-crawler-token
+  # The remote crawler: just the workers process, in remote crawler mode. The
+  # settings for how pages are fetched and captured are read here.
+  crawler:
+    <<: *universalbookmarks
+    user: node
+    working_dir: /app/apps/workers
+    entrypoint: ["node", "dist/index.js"]
+    networks: [default, sites]
+    environment:
+      CRAWLER_REMOTE_SERVER_ENABLED: "true"
+      CRAWLER_REMOTE_TOKEN: e2e-remote-crawler-token
+      WORKERS_HOST: 0.0.0.0
+      WORKERS_PORT: 4000
+      DATA_DIR: /tmp
+      BROWSER_WEB_URL: http://chrome:9222
+      CRAWLER_NUM_WORKERS: 6
+      CRAWLER_ALLOWED_INTERNAL_HOSTNAMES: nginx
+      CRAWLER_STORE_PDF: "true"
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --no-verbose
+        - --tries=1
+        - --spider
+        - http://127.0.0.1:4000/health
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  meilisearch:
+    image: getmeili/meilisearch:v1.55.0
+    restart: unless-stopped
+    ports:
+      - "${MEILI_PORT:-7700}:7700"
+    environment:
+      MEILI_NO_ANALYTICS: "true"
+      MEILI_MASTER_KEY: dummy
+  chrome:
+    image: ${UNIVERSALBOOKMARKS_CHROME_IMAGE:-universalbookmarks-chrome:e2e}
+    networks: [sites]
+    build:
+      context: ../..
+      dockerfile: docker/chrome/Dockerfile
+    restart: unless-stopped
+    init: true
+    command:
+      - --disable-gpu
+      - --disable-dev-shm-usage
+      - --hide-scrollbars
+      - --disable-blink-features=AutomationControlled
+      - --window-size=1440,900
+  nginx:
+    image: nginx:alpine
+    networks: [sites]
+    restart: unless-stopped
+    volumes:
+      - ./setup/html:/usr/share/nginx/html
+      - ./fixtures:/usr/share/nginx/fixtures:ro
+      - ./setup/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+  garage:
+    image: dxflrs/garage:v2.3.0
+    restart: unless-stopped
+    ports:
+      - "9000:3900"
+    environment:
+      # Fixed credentials for local tests only.
+      GARAGE_DEFAULT_ACCESS_KEY: GK0123456789abcdef0123456789abcdef
+      GARAGE_DEFAULT_SECRET_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      GARAGE_DEFAULT_BUCKET: universalbookmarks-test
+    command: /garage server --single-node --default-bucket
+    volumes:
+      - ../../docker/garage/garage.toml:/etc/garage.toml:ro
+      - garage_data:/data
+    healthcheck:
+      test: ["CMD", "/garage", "bucket", "info", "universalbookmarks-test"]
+      interval: 1s
+      timeout: 5s
+      retries: 30
+  aimock:
+    image: ghcr.io/copilotkit/aimock:latest
+    restart: unless-stopped
+    ports:
+      - "${AIMOCK_PORT:-4010}:4010"
+    volumes:
+      - ./setup/aimock:/fixtures:ro
+    command:
+      - --fixtures
+      - /fixtures
+      - --host
+      - 0.0.0.0
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --spider
+        - -q
+        - http://127.0.0.1:4010/health
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+networks:
+  default:
+  # The test site and chrome, reachable from the crawlers but not web-remote.
+  sites:
+
+volumes:
+  garage_data:

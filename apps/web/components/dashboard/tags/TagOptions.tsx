@@ -1,0 +1,94 @@
+"use client";
+
+import { useRef, useState } from "react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useShowArchived } from "@/components/utils/useShowArchived";
+import { useTranslation } from "@/lib/i18n/client";
+import { Combine, Pencil, Square, SquareCheck, Trash2 } from "lucide-react";
+
+import DeleteTagConfirmationDialog from "./DeleteTagConfirmationDialog";
+import { MergeTagModal } from "./MergeTagModal";
+import { RenameTagModal } from "./RenameTagModal";
+
+export function TagOptions({
+  tag,
+  children,
+}: {
+  tag: { id: string; name: string };
+  children?: React.ReactNode;
+}) {
+  const { t } = useTranslation();
+  const { showArchived, onClickShowArchived } = useShowArchived();
+
+  const [deleteTagDialogOpen, setDeleteTagDialogOpen] = useState(false);
+  const [mergeTagDialogOpen, setMergeTagDialogOpen] = useState(false);
+  const [renameTagDialogOpen, setRenameTagDialogOpen] = useState(false);
+  // A dialog opened from the menu opens as the menu hands focus back to its
+  // trigger, so the dialog returns focus there, rather than to the item that's
+  // gone by then.
+  const pendingDialog = useRef<(() => void) | null>(null);
+  const openAfterMenuCloses = (open: () => void) => () => {
+    pendingDialog.current = open;
+  };
+
+  return (
+    <DropdownMenu>
+      <DeleteTagConfirmationDialog
+        tag={tag}
+        open={deleteTagDialogOpen}
+        setOpen={setDeleteTagDialogOpen}
+      />
+      <MergeTagModal
+        open={mergeTagDialogOpen}
+        setOpen={setMergeTagDialogOpen}
+        tag={tag}
+      />
+      <RenameTagModal
+        tag={tag}
+        open={renameTagDialogOpen}
+        setOpen={setRenameTagDialogOpen}
+      />
+      <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
+      <DropdownMenuContent
+        onCloseAutoFocus={() => {
+          // The menu focuses its trigger right after this, before the dialog
+          // has rendered.
+          pendingDialog.current?.();
+          pendingDialog.current = null;
+        }}
+      >
+        <DropdownMenuItem
+          onSelect={openAfterMenuCloses(() => setRenameTagDialogOpen(true))}
+        >
+          <Pencil className="size-4" />
+          <span>{t("actions.rename")}</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={openAfterMenuCloses(() => setMergeTagDialogOpen(true))}
+        >
+          <Combine className="size-4" />
+          <span>{t("actions.merge")}</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onClickShowArchived}>
+          {showArchived ? (
+            <SquareCheck className="size-4" />
+          ) : (
+            <Square className="size-4" />
+          )}
+          <span>{t("actions.toggle_show_archived")}</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={openAfterMenuCloses(() => setDeleteTagDialogOpen(true))}
+        >
+          <Trash2 className="size-4" />
+          <span>{t("actions.delete")}</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}

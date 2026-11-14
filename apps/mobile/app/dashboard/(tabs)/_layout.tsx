@@ -1,0 +1,100 @@
+import React from "react";
+import { Platform } from "react-native";
+import { NativeTabs } from "expo-router/native-tabs";
+import { isIOS26 } from "@/lib/ios";
+import { useTranslation } from "@/lib/i18n/hooks";
+import { useShowSidebar } from "@/lib/responsive";
+import { useColorScheme } from "@/lib/useColorScheme";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+
+export default function TabLayout() {
+  const { colors } = useColorScheme();
+  const { t } = useTranslation();
+  const showSidebar = useShowSidebar();
+  return (
+    <NativeTabs
+      backgroundColor={colors.grey6}
+      minimizeBehavior={Platform.select({
+        ios: "never",
+        default: "onScrollDown",
+      })}
+      labelVisibilityMode={Platform.select({ android: "labeled" })}
+      // Wide windows show the dashboard's own sidebar instead, so keep iOS
+      // from turning the tab bar into its sidebar and hide it there.
+      sidebarAdaptable={false}
+      hidden={showSidebar}
+      disableHiddenAnimation
+    >
+      <NativeTabs.Trigger name="(home)">
+        <NativeTabs.Trigger.Icon
+          sf="house"
+          src={
+            <NativeTabs.Trigger.VectorIcon
+              family={MaterialCommunityIcons}
+              name="home"
+            />
+          }
+        />
+        <NativeTabs.Trigger.Label>{t("tabs.home")}</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="(lists)">
+        <NativeTabs.Trigger.Icon
+          sf="list.bullet"
+          src={
+            <NativeTabs.Trigger.VectorIcon
+              family={MaterialCommunityIcons}
+              name="clipboard-list"
+            />
+          }
+        />
+        <NativeTabs.Trigger.Label>{t("tabs.lists")}</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="(tags)">
+        <NativeTabs.Trigger.Icon
+          sf="tag"
+          src={
+            <NativeTabs.Trigger.VectorIcon
+              family={MaterialCommunityIcons}
+              name="tag"
+            />
+          }
+        />
+        <NativeTabs.Trigger.Label>{t("tabs.tags")}</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="(highlights)">
+        <NativeTabs.Trigger.Icon
+          sf="highlighter"
+          src={
+            <NativeTabs.Trigger.VectorIcon
+              family={MaterialCommunityIcons}
+              name="marker"
+            />
+          }
+        />
+        <NativeTabs.Trigger.Label>
+          {t("tabs.highlights")}
+        </NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger
+        name="(search)"
+        hidden={Platform.OS === "android"}
+        role={isIOS26 ? "search" : undefined}
+      >
+        <NativeTabs.Trigger.Icon
+          sf="magnifyingglass"
+          src={
+            <NativeTabs.Trigger.VectorIcon
+              family={MaterialCommunityIcons}
+              name="magnify"
+            />
+          }
+        />
+        <NativeTabs.Trigger.Label>{t("tabs.search")}</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+    </NativeTabs>
+  );
+}

@@ -1,0 +1,422 @@
+import { TRPCError } from "@trpc/server";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  getTableColumns,
+  isNull,
+  sql,
+} from "drizzle-orm";
+import { z } from "zod";
+
+import {
+  assets,
+  bookmarkAssets,
+  bookmarkLinks,
+  bookmarks,
+  bookmarkTexts,
+} from "@universalbookmarks/db/schema";
+import { deleteAsset } from "@universalbookmarks/shared-server";
+import serverConfig from "@universalbookmarks/shared/config";
+import { createSignedToken } from "@universalbookmarks/shared/signedTokens";
+import { zAssetSignedTokenSchema } from "@universalbookmarks/shared/types/assets";
+import { zAssetTypesSchema } from "@universalbookmarks/shared/types/bookmarks";
+import { getAssetUrl } from "@universalbookmarks/shared/utils/assetUtils";
+
+import { AuthedContext } from "..";
+import {
+  isAllowedToAttachAsset,
+  isAllowedToDetachAsset,
+  mapDBAssetTypeToUserType,
+  mapSchemaAssetTypeToDB,
+} from "../lib/attachments";
+import { BareBookmark } from "./bookmarks";
+
+const listColumns = {
+  ...getTableColumns(assets),
+  bookmarkTitle: bookmarks.title,
+  linkTitle: bookmarkLinks.title,
+  linkUrl: bookmarkLinks.url,
+  textSourceUrl: bookmarkTexts.sourceUrl,
+  assetFileName: bookmarkAssets.fileName,
+  assetSourceUrl: bookmarkAssets.sourceUrl,
+};
+
+export class Asset {
+  constructor(
+    protected ctx: AuthedContext,
+    public asset: typeof assets.$inferSelect,
+  ) {}
+
+  static async fromId(ctx: AuthedContext, id: string): Promise<Asset> {
+    const assetdb = await ctx.db.query.assets.findFirst({
+      where: eq(assets.id, id),
+    });
+
+    if (!assetdb) {
+      throw new TRPCError({
+        code: "NOT_FOUND",
+        message: "Asset not found",
+      });
+    }
+
+    const asset = new Asset(ctx, assetdb);
+
+    if (!(await asset.canUserView())) {
+      throw new TRPCError({
+        code: "NOT_FOUND",
+        message: "Asset not found",
+      });
+    }
+
+    return asset;
+  }
+
+  static async list(
+    ctx: AuthedContext,
+    input: {
+      limit: number;
+      cursor: number | null;
+      sortBy: "size" | "newest";
+    },
+  ) {
+    const page = input.cursor ?? 1;
+    const offset = (page - 1) * input.limit;
+    const [results, [totals]] = await Promise.all([
+      input.sortBy === "newest"
+        ? Asset.listNewest(ctx, input.limit, offset)
+        : Asset.listBySize(ctx, input.limit, offset),
+      ctx.db
+        .select({
+          count: count(),
+          size: sql<number>`coalesce(sum(${assets.size}), 0)`,
+        })
+        .from(assets)
+        .where(eq(assets.userId, ctx.user.id)),
+    ]);
+
+    return {
+      assets: results.map(
+        ({
+          bookmarkTitle,
+          linkTitle,
+          linkUrl,
+          textSourceUrl,
+          assetFileName,
+          assetSourceUrl,
+          ...a
+        }) => ({
+          ...a,
+          assetType: mapDBAssetTypeToUserType(a.assetType),
+          // Follows getBookmarkTitle and getSourceUrl, like the highlights
+          // list.
+          bookmarkTitle:
+            bookmarkTitle?.trim() ||
+            linkTitle?.trim() ||
+            linkUrl ||
+            assetFileName ||
+            null,
+          bookmarkUrl: linkUrl ?? textSourceUrl ?? assetSourceUrl ?? null,
+        }),
+      ),
+      nextCursor: page * input.limit < totals.count ? page + 1 : null,
+      totalCount: totals.count,
+      totalSize: totals.size,
+    };
+  }
+
+  /**
+   * Pages over assets_userId_size_idx alone, then joins the bookmark details
+   * for that page only. Joining in the same query would join every row the
+   * offset skips, which makes deep pages (e.g. the CLI's dump, which pages
+   * through everything) cost hundreds of ms each.
+   */
+  private static async listBySize(
+    ctx: AuthedContext,
+    limit: number,
+    offset: number,
+  ) {
+    // Walks the index backwards, so the order needs no sort, even among assets
+    // of the same size. The id keeps the order stable across pages.
+    const pageIds = ctx.db
+      .select({ id: assets.id })
+      .from(assets)
+      .where(eq(assets.userId, ctx.user.id))
+      .orderBy(desc(assets.size), desc(assets.id))
+      .limit(limit)
+      .offset(offset)
+      .as("page");
+    return await ctx.db
+      .select(listColumns)
+      .from(pageIds)
+      .innerJoin(assets, eq(assets.id, pageIds.id))
+      .leftJoin(bookmarks, eq(assets.bookmarkId, bookmarks.id))
+      .leftJoin(bookmarkLinks, eq(assets.bookmarkId, bookmarkLinks.id))
+      .leftJoin(bookmarkTexts, eq(assets.bookmarkId, bookmarkTexts.id))
+      .leftJoin(bookmarkAssets, eq(assets.bookmarkId, bookmarkAssets.id))
+      .orderBy(desc(assets.size), desc(assets.id));
+  }
+
+  /**
+   * Assets have no timestamp of their own, so "newest" goes by their bookmark.
+   * Sorting assets by a joined column would sort every asset the user has on
+   * each page. Walking the user's bookmarks in date order uses
+   * bookmarks_userId_lastSavedAt_id_idx and stops at the page. Assets without
+   * a bookmark (avatars, backups) come after the rest.
+   */
+  private static async listNewest(
+    ctx: AuthedContext,
+    limit: number,
+    offset: number,
+  ) {
+    // Filtering on the bookmark's owner only: an asset on the user's bookmark
+    // is theirs, and a filter on assets.userId would let SQLite (without
+    // ANALYZE stats) drive from assets_userId_size_idx and sort everything.
+    const attached = await ctx.db
+      .select(listColumns)
+      .from(bookmarks)
+      .innerJoin(assets, eq(assets.bookmarkId, bookmarks.id))
+      .leftJoin(bookmarkLinks, eq(bookmarkLinks.id, bookmarks.id))
+      .leftJoin(bookmarkTexts, eq(bookmarkTexts.id, bookmarks.id))
+      .leftJoin(bookmarkAssets, eq(bookmarkAssets.id, bookmarks.id))
+      .where(eq(bookmarks.userId, ctx.user.id))
+      .orderBy(desc(bookmarks.createdAt), desc(bookmarks.id), asc(assets.id))
+      .limit(limit)
+      .offset(offset);
+    if (attached.length === limit) {
+      return attached;
+    }
+
+    // This page runs past the assets with a bookmark, so fill it from the
+    // rest. A short page ends at the last of them, so their count is only
+    // needed when the page holds none.
+    const attachedCount =
+      attached.length > 0
+        ? offset + attached.length
+        : (
+            await ctx.db
+              .select({ attachedCount: count() })
+              .from(bookmarks)
+              .innerJoin(assets, eq(assets.bookmarkId, bookmarks.id))
+              .where(eq(bookmarks.userId, ctx.user.id))
+          )[0].attachedCount;
+    const unattached = await ctx.db
+      .select({
+        ...getTableColumns(assets),
+        bookmarkTitle: sql<string | null>`null`,
+        linkTitle: sql<string | null>`null`,
+        linkUrl: sql<string | null>`null`,
+        textSourceUrl: sql<string | null>`null`,
+        assetFileName: sql<string | null>`null`,
+        assetSourceUrl: sql<string | null>`null`,
+      })
+      .from(assets)
+      .where(and(eq(assets.userId, ctx.user.id), isNull(assets.bookmarkId)))
+      .orderBy(asc(assets.id))
+      .limit(limit - attached.length)
+      .offset(Math.max(0, offset - attachedCount));
+    return [...attached, ...unattached];
+  }
+
+  static async attachAsset(
+    ctx: AuthedContext,
+    input: {
+      bookmarkId: string;
+      asset: {
+        id: string;
+        assetType: z.infer<typeof zAssetTypesSchema>;
+      };
+    },
+  ) {
+    const [asset] = await Promise.all([
+      Asset.fromId(ctx, input.asset.id),
+      this.ensureBookmarkOwnership(ctx, input.bookmarkId),
+    ]);
+    asset.ensureOwnership();
+
+    if (!isAllowedToAttachAsset(input.asset.assetType)) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "You can't attach this type of asset",
+      });
+    }
+
+    const [updatedAsset] = await ctx.db
+      .update(assets)
+      .set({
+        assetType: mapSchemaAssetTypeToDB(input.asset.assetType),
+        bookmarkId: input.bookmarkId,
+      })
+      .where(and(eq(assets.id, input.asset.id), eq(assets.userId, ctx.user.id)))
+      .returning();
+
+    return {
+      id: updatedAsset.id,
+      assetType: mapDBAssetTypeToUserType(updatedAsset.assetType),
+      fileName: updatedAsset.fileName,
+      size: updatedAsset.size,
+    };
+  }
+
+  static async replaceAsset(
+    ctx: AuthedContext,
+    input: {
+      bookmarkId: string;
+      oldAssetId: string;
+      newAssetId: string;
+    },
+  ) {
+    const [oldAsset, newAsset] = await Promise.all([
+      Asset.fromId(ctx, input.oldAssetId),
+      Asset.fromId(ctx, input.newAssetId),
+      this.ensureBookmarkOwnership(ctx, input.bookmarkId),
+    ]);
+    oldAsset.ensureOwnership();
+    newAsset.ensureOwnership();
+
+    if (
+      !isAllowedToAttachAsset(
+        mapDBAssetTypeToUserType(oldAsset.asset.assetType),
+      )
+    ) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "You can't attach this type of asset",
+      });
+    }
+
+    await ctx.db.transaction((tx) => {
+      tx.delete(assets).where(eq(assets.id, input.oldAssetId)).run();
+      tx.update(assets)
+        .set({
+          bookmarkId: input.bookmarkId,
+          assetType: oldAsset.asset.assetType,
+        })
+        .where(eq(assets.id, input.newAssetId))
+        .run();
+    });
+
+    await deleteAsset({
+      userId: ctx.user.id,
+      assetId: input.oldAssetId,
+    }).catch(() => ({}));
+  }
+
+  static async detachAsset(
+    ctx: AuthedContext,
+    input: {
+      bookmarkId: string;
+      assetId: string;
+    },
+  ) {
+    const [asset] = await Promise.all([
+      Asset.fromId(ctx, input.assetId),
+      this.ensureBookmarkOwnership(ctx, input.bookmarkId),
+    ]);
+
+    if (
+      !isAllowedToDetachAsset(mapDBAssetTypeToUserType(asset.asset.assetType))
+    ) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "You can't detach this type of asset",
+      });
+    }
+
+    const result = await ctx.db
+      .delete(assets)
+      .where(
+        and(
+          eq(assets.id, input.assetId),
+          eq(assets.bookmarkId, input.bookmarkId),
+        ),
+      );
+    if (result.changes == 0) {
+      throw new TRPCError({ code: "NOT_FOUND" });
+    }
+    await deleteAsset({ userId: ctx.user.id, assetId: input.assetId }).catch(
+      () => ({}),
+    );
+  }
+
+  private static async ensureBookmarkOwnership(
+    ctx: AuthedContext,
+    bookmarkId: string,
+  ) {
+    const bookmark = await BareBookmark.bareFromId(ctx, bookmarkId);
+    bookmark.ensureOwnership();
+  }
+
+  ensureOwnership() {
+    if (this.asset.userId != this.ctx.user.id) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "User is not allowed to access resource",
+      });
+    }
+  }
+
+  static async ensureOwnership(ctx: AuthedContext, assetId: string) {
+    return (await Asset.fromId(ctx, assetId)).ensureOwnership();
+  }
+
+  async canUserView(): Promise<boolean> {
+    // Asset owner can always view it
+    if (this.asset.userId === this.ctx.user.id) {
+      return true;
+    }
+
+    // Avatars are always public
+    if (this.asset.assetType === "avatar") {
+      return true;
+    }
+
+    // If asset is attached to a bookmark, check bookmark access permissions
+    if (this.asset.bookmarkId) {
+      try {
+        // This throws if the user doesn't have access to the bookmark
+        await BareBookmark.bareFromId(this.ctx, this.asset.bookmarkId);
+        return true;
+      } catch (e) {
+        if (e instanceof TRPCError && e.code === "FORBIDDEN") {
+          return false;
+        }
+        throw e;
+      }
+    }
+
+    return false;
+  }
+
+  async ensureCanView() {
+    if (!(await this.canUserView())) {
+      throw new TRPCError({
+        code: "NOT_FOUND",
+        message: "Asset not found",
+      });
+    }
+  }
+
+  getUrl() {
+    return getAssetUrl(this.asset.id);
+  }
+
+  static getPublicSignedAssetUrl(
+    assetId: string,
+    assetOwnerId: string,
+    expireAt: number,
+  ) {
+    const payload: z.infer<typeof zAssetSignedTokenSchema> = {
+      assetId,
+      userId: assetOwnerId,
+    };
+    const signedToken = createSignedToken(
+      payload,
+      serverConfig.signingSecret(),
+      expireAt,
+    );
+    return `${serverConfig.publicApiUrl}/public/assets/${assetId}?token=${signedToken}`;
+  }
+}

@@ -1,0 +1,33 @@
+Dockerfile
+.dockerignore
+**/node_modules
+npm-debug.log
+README.md
+**/.next
+**/*.db
+**/.env*
+.turbo
+.git
+./data
+
+# Files that don't need to be included in the Docker image
+.github
+docs
+kubernetes
+charts
+apps/mobile
+apps/landing
+apps/browser-extension
+packages/e2e_tests
+packages/benchmarks
+tools/compare-models
+tools/seed-snapshot
+snapshots
+
+# Aider
+.aider*
+
+# next.js
+.next/
+out/
+.claude/worktrees
