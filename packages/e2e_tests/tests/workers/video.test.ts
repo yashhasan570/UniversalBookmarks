@@ -1,3 +1,5 @@
+import * as fs from "fs";
+import * as path from "path";
 import { assert, beforeEach, describe, expect, inject, it } from "vitest";
 
 import { createUniversalBookmarksClient } from "@universalbookmarks/sdk";
@@ -5,9 +7,17 @@ import { createUniversalBookmarksClient } from "@universalbookmarks/sdk";
 import { createTestUser } from "../../utils/api";
 import { waitUntil } from "../../utils/general";
 
-describe("Video Worker Tests", () => {
-  const port = inject("universalbookmarksPort");
+const videoFixture = fs.readFileSync(
+  path.join(__dirname, "../../setup/html/video.mp4"),
+);
 
+// "local" downloads the videos itself. "remote" has the remote sandbox (the
+// sandbox service in docker-compose.yml) download them, and can't reach the
+// test site itself.
+describe.each([
+  { mode: "local", port: inject("universalbookmarksPort") },
+  { mode: "remote", port: inject("universalbookmarksRemotePort") },
+])("Video Worker Tests ($mode)", ({ port }) => {
   if (!port) {
     throw new Error("Missing required environment variables");
   }
@@ -30,7 +40,7 @@ describe("Video Worker Tests", () => {
   }
 
   beforeEach(async () => {
-    apiKey = await createTestUser();
+    apiKey = await createTestUser(undefined, String(port));
     client = createUniversalBookmarksClient({
       baseUrl: `http://localhost:${port}/api/v1/`,
       headers: {
@@ -64,5 +74,13 @@ describe("Video Worker Tests", () => {
     assert(bookmark && bookmark.content.type === "link");
     expect(bookmark.content.videoAssetId).toBeDefined();
     expect(bookmark.assets.find((a) => a.assetType === "video")).toBeDefined();
+
+    const response = await fetch(
+      `http://localhost:${port}/api/v1/assets/${bookmark.content.videoAssetId}`,
+      { headers: { authorization: `Bearer ${apiKey}` } },
+    );
+    expect(response.status).toBe(200);
+    const video = Buffer.from(await response.arrayBuffer());
+    expect(Buffer.compare(video, videoFixture)).toBe(0);
   });
 });

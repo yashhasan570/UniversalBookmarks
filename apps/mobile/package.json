@@ -7,11 +7,11 @@
     "clean:prebuild": "APP_VARIANT=development expo prebuild --no-install --clean",
     "start": "expo start",
     "android": "APP_VARIANT=development expo run:android",
-    "android:preview": "APP_VARIANT=development pnpm run android --variant release",
-    "android:release": "pnpm run android --variant release",
+    "android:preview": "SENTRY_DISABLE_AUTO_UPLOAD=true APP_VARIANT=development pnpm run android --variant release",
+    "android:release": "SENTRY_DISABLE_AUTO_UPLOAD=true pnpm run android --variant release",
     "ios": "APP_VARIANT=development expo run:ios",
-    "ios:preview": "APP_VARIANT=development pnpm run ios --configuration Release",
-    "ios:release": "pnpm run ios --configuration Release",
+    "ios:preview": "SENTRY_DISABLE_AUTO_UPLOAD=true APP_VARIANT=development pnpm run ios --configuration Release",
+    "ios:release": "SENTRY_DISABLE_AUTO_UPLOAD=true pnpm run ios --configuration Release",
     "web": "expo start --web",
     "format": "oxfmt --ignore-path=../../.gitignore --ignore-path=./.gitignore --check .",
     "format:fix": "oxfmt --ignore-path=../../.gitignore --ignore-path=./.gitignore .",
@@ -33,6 +33,7 @@
     "@react-native-menu/menu": "^2.0.0",
     "@rn-primitives/hooks": "^1.3.0",
     "@rn-primitives/slot": "^1.2.0",
+    "@sentry/react-native": "^8.14.0",
     "@shopify/flash-list": "2.3.2",
     "@tanstack/react-query": "5.90.2",
     "@tanstack/react-query-persist-client": "5.90.2",
@@ -112,6 +113,7 @@
   "expo": {
     "install": {
       "exclude": [
+        "@sentry/react-native",
         "typescript"
       ]
     }
